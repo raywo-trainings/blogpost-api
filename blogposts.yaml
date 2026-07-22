@@ -15,6 +15,11 @@ servers:
 tags:
   - name: Blogposts
     description: Operationen zum Verwalten von Blogposts
+  - name: Ratings
+    description: >-
+      Operationen zum Verwalten der Bewertungen (Ratings) eines Blogposts.
+      Ratings sind eine Subressource eines Blogposts und existieren nicht
+      unabhängig von diesem.
 
 paths:
   /blogposts:
@@ -22,8 +27,17 @@ paths:
       tags:
         - Blogposts
       summary: Alle Blogposts abrufen
-      description: Liefert die Liste aller vorhandenen Blogposts.
+      description: >-
+        Liefert die Liste aller vorhandenen Blogposts.
+
+        Jeder Blogpost enthält immer die aggregierten Bewertungsfelder
+        `averageRating` und `ratingCount`. Die einzelnen Ratings werden aus
+        Gründen der Datensparsamkeit (Vermeidung von Over-Fetching)
+        standardmäßig nicht mitgeliefert. Über den Parameter `includeRatings`
+        können sie bei Bedarf eingebettet werden.
       operationId: listBlogposts
+      parameters:
+        - $ref: '#/components/parameters/IncludeRatings'
       responses:
         '200':
           description: Liste aller Blogposts (kann leer sein).
@@ -75,8 +89,12 @@ paths:
       tags:
         - Blogposts
       summary: Einzelnen Blogpost abrufen
-      description: Liefert den Blogpost mit der angegebenen ID.
+      description: >-
+        Liefert den Blogpost mit der angegebenen ID. Wie bei der Liste können
+        über `includeRatings` die einzelnen Ratings eingebettet werden.
       operationId: getBlogpost
+      parameters:
+        - $ref: '#/components/parameters/IncludeRatings'
       responses:
         '200':
           description: Der angeforderte Blogpost.
@@ -133,6 +151,90 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /blogposts/{id}/ratings:
+    parameters:
+      - $ref: '#/components/parameters/BlogpostId'
+    get:
+      tags:
+        - Ratings
+      summary: Alle Ratings eines Blogposts abrufen
+      description: >-
+        Liefert alle Bewertungen (Ratings) des Blogposts mit der angegebenen ID.
+      operationId: listRatings
+      responses:
+        '200':
+          description: Liste aller Ratings des Blogposts (kann leer sein).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rating'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Ratings
+      summary: Rating anlegen
+      description: >-
+        Fügt dem Blogpost mit der angegebenen ID eine neue Bewertung hinzu. Die
+        Felder `id` und `createdAt` werden vom Server vergeben und dürfen nicht
+        mitgesendet werden. Ein einmal angelegtes Rating ist unveränderlich; es
+        gibt daher weder eine Ersetzen- noch eine Löschen-Operation.
+      operationId: createRating
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RatingInput'
+      responses:
+        '201':
+          description: Das Rating wurde angelegt.
+          headers:
+            Location:
+              description: URL des neu angelegten Ratings.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rating'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /blogposts/{id}/ratings/{ratingId}:
+    parameters:
+      - $ref: '#/components/parameters/BlogpostId'
+      - $ref: '#/components/parameters/RatingId'
+    get:
+      tags:
+        - Ratings
+      summary: Einzelnes Rating abrufen
+      description: >-
+        Liefert das Rating mit der angegebenen `ratingId` des Blogposts mit der
+        angegebenen `id`.
+      operationId: getRating
+      responses:
+        '200':
+          description: Das angeforderte Rating.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rating'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   parameters:
     BlogpostId:
@@ -144,6 +246,31 @@ components:
         type: string
         format: uuid
       example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+    RatingId:
+      name: ratingId
+      in: path
+      required: true
+      description: Eindeutige ID des Ratings innerhalb des Blogposts.
+      schema:
+        type: string
+        format: uuid
+      example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+    IncludeRatings:
+      name: includeRatings
+      in: query
+      required: false
+      description: >-
+        Legt fest, ob die einzelnen Ratings in die zurückgelieferten Blogposts
+        eingebettet werden. Bei `false` (Standard) enthält jeder Blogpost nur
+        die aggregierten Felder `averageRating` und `ratingCount`; das Feld
+        `ratings` wird weggelassen. Bei `true` wird zusätzlich das Feld
+        `ratings` mit allen Bewertungen gefüllt.
+      schema:
+        type: boolean
+        default: false
+      example: true
 
   schemas:
     BlogpostInput:
@@ -196,6 +323,91 @@ components:
           description: >-
             Zeitpunkt der letzten Änderung (ISO 8601). Wird vom Server
             gesetzt und aktualisiert.
+          readOnly: true
+          example: '2026-07-22T11:19:00Z'
+        averageRating:
+          type: number
+          format: double
+          nullable: true
+          minimum: 1
+          maximum: 5
+          description: >-
+            Durchschnittliche Sternebewertung über alle Ratings dieses
+            Blogposts. Ist `null`, solange noch keine Ratings vorliegen
+            (`ratingCount` ist dann `0`).
+          readOnly: true
+          example: 4.5
+        ratingCount:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Anzahl der für diesen Blogpost abgegebenen Ratings.
+          readOnly: true
+          example: 12
+        ratings:
+          type: array
+          description: >-
+            Die einzelnen Ratings dieses Blogposts. Wird nur eingebettet, wenn
+            die Anfrage den Parameter `includeRatings=true` gesetzt hat, und
+            sonst weggelassen.
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/Rating'
+
+    RatingInput:
+      type: object
+      description: Vom Client bereitgestellte Daten eines Ratings.
+      required:
+        - stars
+      properties:
+        stars:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+          description: Sternebewertung von 1 (schlecht) bis 5 (ausgezeichnet).
+          example: 5
+        comment:
+          type: string
+          maxLength: 1000
+          description: >-
+            Optionaler Freitextkommentar zur Bewertung. Eine Bewertung ist auch
+            ohne Kommentar zulässig.
+          example: Sehr hilfreicher und gut geschriebener Beitrag!
+      additionalProperties: false
+
+    Rating:
+      type: object
+      description: Eine Bewertung eines Blogposts inklusive der servergenerierten Felder.
+      required:
+        - id
+        - stars
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Eindeutige, vom Server vergebene ID des Ratings.
+          readOnly: true
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        stars:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+          description: Sternebewertung von 1 (schlecht) bis 5 (ausgezeichnet).
+          example: 5
+        comment:
+          type: string
+          maxLength: 1000
+          description: Optionaler Freitextkommentar zur Bewertung.
+          example: Sehr hilfreicher und gut geschriebener Beitrag!
+        createdAt:
+          type: string
+          format: date-time
+          description: >-
+            Zeitpunkt, zu dem das Rating angelegt wurde (ISO 8601). Wird vom
+            Server gesetzt.
           readOnly: true
           example: '2026-07-22T11:19:00Z'
 
