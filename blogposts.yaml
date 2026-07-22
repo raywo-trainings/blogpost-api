@@ -28,6 +28,11 @@ tags:
     description: Operationen zum Verwalten von Blogposts
   - name: Authors
     description: Operationen zum Verwalten von Autoren und ihren Avataren
+  - name: Hashtags
+    description: >-
+      Operationen zum Verwalten von Hashtags und zum Zuordnen von Hashtags
+      zu Blogposts. Hashtags bilden ein kontrolliertes Vokabular: Sie müssen
+      angelegt sein, bevor sie einem Blogpost zugewiesen werden können.
 
 paths:
   /blogposts:
@@ -35,8 +40,13 @@ paths:
       tags:
         - Blogposts
       summary: Alle Blogposts abrufen
-      description: Liefert die Liste aller vorhandenen Blogposts.
+      description: >-
+        Liefert die Liste aller vorhandenen Blogposts. Über den optionalen
+        Query-Parameter `hashtag` kann die Liste auf Blogposts eingeschränkt
+        werden, denen der angegebene Hashtag zugeordnet ist.
       operationId: listBlogposts
+      parameters:
+        - $ref: '#/components/parameters/HashtagFilter'
       responses:
         '200':
           description: Liste aller Blogposts (kann leer sein).
@@ -363,6 +373,181 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /blogposts/{id}/hashtags/{tag}:
+    parameters:
+      - $ref: '#/components/parameters/BlogpostId'
+      - $ref: '#/components/parameters/HashtagName'
+    put:
+      tags:
+        - Hashtags
+      summary: Hashtag einem Blogpost zuordnen
+      description: >-
+        Ordnet den Hashtag `tag` dem Blogpost mit der angegebenen ID zu. Die
+        Operation ist idempotent: Ist der Hashtag bereits zugeordnet, bleibt
+        der Zustand unverändert. Der Hashtag muss zuvor als Vokabular-Eintrag
+        angelegt worden sein; andernfalls wird mit 404 geantwortet.
+      operationId: assignHashtagToBlogpost
+      responses:
+        '204':
+          description: >-
+            Der Hashtag ist dem Blogpost zugeordnet (neu zugeordnet oder war
+            bereits zugeordnet). Kein Inhalt im Body.
+        '404':
+          description: >-
+            Es existiert kein Blogpost mit der angegebenen ID oder kein
+            Hashtag mit dem angegebenen Namen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Hashtags
+      summary: Hashtag von einem Blogpost entfernen
+      description: >-
+        Entfernt die Zuordnung des Hashtags `tag` vom Blogpost mit der
+        angegebenen ID. Der Hashtag selbst bleibt als Vokabular-Eintrag
+        bestehen.
+      operationId: removeHashtagFromBlogpost
+      responses:
+        '204':
+          description: Die Zuordnung wurde entfernt. Kein Inhalt im Body.
+        '404':
+          description: >-
+            Es existiert kein Blogpost mit der angegebenen ID, kein Hashtag
+            mit dem angegebenen Namen, oder der Hashtag ist dem Blogpost
+            nicht zugeordnet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /hashtags:
+    get:
+      tags:
+        - Hashtags
+      summary: Alle Hashtags abrufen
+      description: Liefert die Liste aller vorhandenen Hashtags.
+      operationId: listHashtags
+      responses:
+        '200':
+          description: Liste aller Hashtags (kann leer sein).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Hashtag'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Hashtags
+      summary: Hashtag anlegen
+      description: >-
+        Legt einen neuen Hashtag im Vokabular an. Der Name muss eindeutig sein;
+        existiert bereits ein Hashtag mit demselben Namen, wird mit 409
+        geantwortet. Der Vergleich erfolgt case-insensitiv, d. h. `Java` und
+        `java` gelten als derselbe Name.
+      operationId: createHashtag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HashtagInput'
+      responses:
+        '201':
+          description: Der Hashtag wurde angelegt.
+          headers:
+            Location:
+              description: URL des neu angelegten Hashtags.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hashtag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /hashtags/{tag}:
+    parameters:
+      - $ref: '#/components/parameters/HashtagName'
+    get:
+      tags:
+        - Hashtags
+      summary: Einzelnen Hashtag abrufen
+      description: Liefert den Hashtag mit dem angegebenen Namen inklusive Beschreibung.
+      operationId: getHashtag
+      responses:
+        '200':
+          description: Der angeforderte Hashtag.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hashtag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Hashtags
+      summary: Beschreibung eines Hashtags aktualisieren
+      description: >-
+        Aktualisiert die Beschreibung des Hashtags mit dem angegebenen Namen.
+        Der Name selbst ist unveränderlich und wird über den Pfad bestimmt.
+      operationId: updateHashtag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HashtagUpdate'
+      responses:
+        '200':
+          description: Der Hashtag wurde aktualisiert und wird zurückgegeben.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hashtag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Hashtags
+      summary: Hashtag löschen
+      description: >-
+        Löscht den Hashtag mit dem angegebenen Namen aus dem Vokabular. Damit
+        wird der Hashtag auch von allen Blogposts entfernt, denen er zugeordnet
+        war.
+      operationId: deleteHashtag
+      responses:
+        '204':
+          description: Der Hashtag wurde gelöscht. Kein Inhalt im Body.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   parameters:
     BlogpostId:
@@ -384,6 +569,36 @@ components:
         type: string
         format: uuid
       example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
+    HashtagName:
+      name: tag
+      in: path
+      required: true
+      description: >-
+        Kanonischer Name des Hashtags ohne führendes „#“ (z. B. `java`). Namen
+        werden case-insensitiv behandelt: `Java` und `java` bezeichnen denselben
+        Hashtag.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 50
+        pattern: '^[A-Za-z0-9_]+$'
+      example: java
+
+    HashtagFilter:
+      name: hashtag
+      in: query
+      required: false
+      description: >-
+        Schränkt die Liste auf Blogposts ein, denen der angegebene Hashtag
+        (kanonischer Name ohne „#“) zugeordnet ist. Der Vergleich erfolgt
+        case-insensitiv.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 50
+        pattern: '^[A-Za-z0-9_]+$'
+      example: java
 
   schemas:
     BlogpostInput:
@@ -479,6 +694,86 @@ components:
             gesetzt und aktualisiert.
           readOnly: true
           example: '2026-07-22T11:19:00Z'
+        hashtags:
+          type: array
+          description: >-
+            Die dem Blogpost zugeordneten Hashtags (kanonische Namen ohne „#“).
+            Die Zuordnung wird ausschließlich über die Endpunkte unter
+            `/blogposts/{id}/hashtags/{tag}` gepflegt und kann daher hier nicht
+            direkt gesetzt werden.
+          readOnly: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+            pattern: '^[A-Za-z0-9_]+$'
+            example: java
+          example:
+            - java
+            - api
+
+    Hashtag:
+      type: object
+      description: >-
+        Ein Hashtag zur thematischen Kategorisierung von Blogposts, bestehend
+        aus einem eindeutigen Namen und einer optionalen Beschreibung.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: >-
+            Kanonischer, eindeutiger Name des Hashtags ohne führendes „#“. Namen
+            werden case-insensitiv behandelt: `Java` und `java` bezeichnen
+            denselben Hashtag und gelten daher als eindeutig identisch.
+          minLength: 1
+          maxLength: 50
+          pattern: '^[A-Za-z0-9_]+$'
+          example: java
+        description:
+          type: string
+          description: Optionale, kurze Beschreibung des Themas des Hashtags.
+          maxLength: 200
+          example: Tutorials und Neuigkeiten rund um die Java-Sprache und -Plattform.
+
+    HashtagInput:
+      type: object
+      description: Vom Client bereitgestellte Daten zum Anlegen eines Hashtags.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: >-
+            Kanonischer, eindeutiger Name des Hashtags ohne führendes „#“. Namen
+            werden case-insensitiv behandelt: `Java` und `java` bezeichnen
+            denselben Hashtag und gelten daher als eindeutig identisch.
+          minLength: 1
+          maxLength: 50
+          pattern: '^[A-Za-z0-9_]+$'
+          example: java
+        description:
+          type: string
+          description: Optionale, kurze Beschreibung des Themas des Hashtags.
+          maxLength: 200
+          example: Tutorials und Neuigkeiten rund um die Java-Sprache und -Plattform.
+      additionalProperties: false
+
+    HashtagUpdate:
+      type: object
+      description: >-
+        Vom Client bereitgestellte Daten zum Aktualisieren der Beschreibung
+        eines Hashtags. Der Name ist unveränderlich und wird über den Pfad
+        bestimmt.
+      properties:
+        description:
+          type: string
+          description: >-
+            Kurze Beschreibung des Themas des Hashtags. Ein leerer bzw. nicht
+            gesendeter Wert entfernt die Beschreibung.
+          maxLength: 200
+          example: Tutorials und Neuigkeiten rund um die Java-Sprache und -Plattform.
+      additionalProperties: false
 
     AuthorSummary:
       type: object
@@ -654,7 +949,10 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
     Conflict:
-      description: Die Anfrage steht im Konflikt mit dem aktuellen Zustand (z. B. Benutzername bereits vergeben).
+      description: >-
+        Die Anfrage steht im Konflikt mit dem aktuellen Zustand (z. B.
+        Benutzername bereits vergeben oder es existiert bereits ein Hashtag mit
+        dem angegebenen Namen – Vergleich case-insensitiv).
       content:
         application/json:
           schema:
