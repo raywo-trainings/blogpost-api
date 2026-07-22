@@ -113,6 +113,8 @@ paths:
                 $ref: '#/components/schemas/Blogpost'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -169,6 +171,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -237,6 +241,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -289,6 +295,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -347,9 +355,9 @@ paths:
           description: >-
             Der Autor existiert nicht oder hat (noch) kein Avatar hinterlegt.
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/ProblemDetail'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -426,9 +434,9 @@ paths:
             Es existiert kein Blogpost mit der angegebenen ID oder kein
             Hashtag mit dem angegebenen Namen.
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/ProblemDetail'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -450,9 +458,9 @@ paths:
             mit dem angegebenen Namen, oder der Hashtag ist dem Blogpost
             nicht zugeordnet.
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/ProblemDetail'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -508,6 +516,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -557,6 +567,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -634,6 +646,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1141,60 +1155,282 @@ components:
           readOnly: true
           example: '2026-07-22T11:19:00Z'
 
-    Error:
+    # ----- Problems -----
+
+    ProblemDetail:
+      description: |
+        Problem details defined by [RFC-9457](https://datatracker.ietf.org/doc/rfc9457/)
       type: object
-      description: Standardisierte Fehlerantwort.
-      required:
-        - status
-        - message
       properties:
+        instance:
+          type: string
+          format: uri-reference
+          maxLength: 2000
+          description: |
+            A URI reference that identifies the specific
+            occurrence of the problem.  It may or may not yield further
+            information if dereferenced.
+        type:
+          type: string
+          format: uri-reference
+          maxLength: 2000
+          description: |
+            A URI reference [RFC3986] that identifies the
+            problem type.  This specification encourages that, when
+            dereferenced, it provide human-readable documentation for the
+            problem type.  When this member is not present, its value is
+            assumed to be "about:blank".
+          example: about:blank
+        title:
+          type: string
+          maxLength: 2000
+          description: |
+            A short, human-readable summary of the problem
+            type.  It **SHOULD NOT** change from occurrence to occurrence of the
+            problem, except for purposes of localization (e.g., using
+            proactive content negotiation; see [RFC7231], Section 3.4).
+        detail:
+          type: string
+          maxLength: 2000
+          description: |
+            A human-readable explanation specific to this
+            occurrence of the problem.
         status:
           type: integer
           format: int32
-          description: HTTP-Statuscode des Fehlers.
+          description: |
+            The HTTP status code ([RFC7231], Section 6)
+            generated by the origin server for this occurrence of the problem.
+          minimum: 100
+          maximum: 599
           example: 404
-        message:
+      required:
+        - instance
+        - type
+        - title
+        - detail
+        - status
+
+    Field:
+      description: |
+        The affected field.
+      type: string
+      example: "name"
+
+    TooShortViolation:
+      type: object
+      description: >-
+        Ein Textfeld unterschreitet die zulässige Mindestlänge (`minLength`).
+      properties:
+        errorCode:
           type: string
-          description: Menschenlesbare Beschreibung des Fehlers.
-          example: Blogpost nicht gefunden.
+          enum:
+            - TOO_SHORT
+        field:
+          $ref: '#/components/schemas/Field'
+        referenceValue:
+          description: Die geforderte Mindestlänge.
+          type: number
+          example: 1
+      required:
+        - errorCode
+        - field
+        - referenceValue
+
+    TooLongViolation:
+      type: object
+      description: >-
+        Ein Textfeld überschreitet die zulässige Höchstlänge (`maxLength`).
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - TOO_LONG
+        field:
+          $ref: '#/components/schemas/Field'
+        referenceValue:
+          description: Die erlaubte Höchstlänge.
+          type: number
+          example: 50
+      required:
+        - errorCode
+        - field
+        - referenceValue
+
+    MustBePresentViolation:
+      type: object
+      description: Ein Pflichtfeld wurde nicht mitgesendet.
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - MUST_BE_PRESENT
+        field:
+          $ref: '#/components/schemas/Field'
+      required:
+        - errorCode
+        - field
+
+    NumberViolation:
+      type: object
+      description: >-
+        Ein numerisches Feld verletzt eine Ober- oder Untergrenze (`minimum`
+        bzw. `maximum`). Der konkrete `errorCode` gibt an, welche Grenze verletzt
+        wurde.
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - GREATER_THAN_OR_EQUAL
+            - GREATER_THAN
+            - SMALLER_THAN_OR_EQUAL
+            - SMALLER_THAN
+        field:
+          $ref: '#/components/schemas/Field'
+        actualValue:
+          description: Der tatsächlich übergebene Wert.
+          type: number
+          example: 10
+        referenceValue:
+          description: Der Grenzwert, gegen den geprüft wurde.
+          type: number
+          example: 5
+      required:
+        - errorCode
+        - field
+        - actualValue
+        - referenceValue
+
+    ProblemDetailWithViolations:
+      description: >-
+        Fehlerantwort für fehlgeschlagene Validierungen. Erweitert das
+        Basis-Schema `ProblemDetail` (via `allOf`) um eine Liste konkreter
+        Verletzungen und wird für den Status 422 verwendet.
+      allOf:
+        # allOf-Anwendungsfall: Komposition/Erweiterung. Ein spezialisiertes
+        # Fehlerschema entsteht, indem das gemeinsame Basis-Schema `ProblemDetail`
+        # unverändert übernommen und um zusätzliche Member (`violations`) ergänzt
+        # wird. Eine gültige Instanz muss beide Teilschemas erfüllen.
+        - $ref: '#/components/schemas/ProblemDetail'
+        - type: object
+          properties:
+            violations:
+              type: array
+              # anyOf-Anwendungsfall: heterogene Liste. Jedes Element ist genau
+              # eine von mehreren möglichen Verletzungsformen; welche zutrifft,
+              # unterscheidet der jeweilige `errorCode`. Ein Element ist gültig,
+              # sobald es (mindestens) eines der Teilschemas erfüllt.
+              items:
+                anyOf:
+                  - $ref: '#/components/schemas/MustBePresentViolation'
+                  - $ref: '#/components/schemas/TooShortViolation'
+                  - $ref: '#/components/schemas/TooLongViolation'
+                  - $ref: '#/components/schemas/NumberViolation'
+              maxItems: 200
+              description: >-
+                Liste der einzelnen Regelverletzungen, die bei der Validierung
+                der Anfrage aufgetreten sind.
+          required:
+            - violations
 
   responses:
     BadRequest:
-      description: Die Anfrage war fehlerhaft (z. B. ein Feld verletzt eine Längenbeschränkung oder ein Pflichtfeld fehlt).
+      description: >-
+        Die Anfrage ist syntaktisch fehlerhaft und konnte nicht verarbeitet
+        werden (z. B. ungültiges JSON oder ein Feld mit falschem Datentyp).
+        Inhaltliche Validierungsfehler an einzelnen Feldern werden dagegen mit
+        Status 422 gemeldet.
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: Der Anfrage-Body ist kein gültiges JSON.
+            instance: /blogposts
+    UnprocessableEntity:
+      description: >-
+        Die Anfrage war syntaktisch korrekt, verletzt aber inhaltliche
+        Validierungsregeln. Die einzelnen Verletzungen stehen im Feld
+        `violations`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetailWithViolations'
+          example:
+            type: about:blank
+            title: Unprocessable Entity
+            status: 422
+            detail: Die übergebenen Daten verletzen eine oder mehrere Validierungsregeln.
+            instance: /blogposts
+            violations:
+              - errorCode: MUST_BE_PRESENT
+                field: content
+              - errorCode: TOO_LONG
+                field: title
+                referenceValue: 50
     NotFound:
       description: Es existiert keine Ressource mit der angegebenen ID.
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            type: about:blank
+            title: Not Found
+            status: 404
+            detail: Es existiert kein Blogpost mit der angegebenen ID.
+            instance: /blogposts/3fa85f64-5717-4562-b3fc-2c963f66afa6
     Conflict:
       description: >-
         Die Anfrage steht im Konflikt mit dem aktuellen Zustand (z. B.
         Benutzername bereits vergeben oder es existiert bereits ein Hashtag mit
         dem angegebenen Namen – Vergleich case-insensitiv).
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            type: about:blank
+            title: Conflict
+            status: 409
+            detail: Es existiert bereits ein Hashtag mit dem angegebenen Namen.
+            instance: /hashtags
     PayloadTooLarge:
       description: Die hochgeladene Datei überschreitet die zulässige Größe.
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            type: about:blank
+            title: Payload Too Large
+            status: 413
+            detail: Das Avatar-Bild überschreitet die zulässige Maximalgröße.
+            instance: /authors/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar
     UnsupportedMediaType:
       description: Der Medientyp der Anfrage wird nicht unterstützt (erlaubt sind image/png und image/jpeg).
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            type: about:blank
+            title: Unsupported Media Type
+            status: 415
+            detail: Es werden nur die Medientypen image/png und image/jpeg unterstützt.
+            instance: /authors/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar
     InternalServerError:
       description: Unerwarteter Fehler auf dem Server.
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            detail: Es ist ein unerwarteter Fehler aufgetreten.
+            instance: /blogposts
