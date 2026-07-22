@@ -1,0 +1,237 @@
+openapi: 3.0.1
+
+info:
+  title: Blogpost API
+  description: >-
+    API zur Verwaltung von Blogposts. Ein Blogpost besteht aus einem Titel
+    (höchstens 50 Zeichen) und einem Textinhalt. Zusätzlich wird der Zeitpunkt
+    der letzten Änderung geführt.
+  version: 1.0.0
+
+servers:
+  - url: 'https://localhost:8080'
+    description: Lokaler Entwicklungsserver
+
+tags:
+  - name: Blogposts
+    description: Operationen zum Verwalten von Blogposts
+
+paths:
+  /blogposts:
+    get:
+      tags:
+        - Blogposts
+      summary: Alle Blogposts abrufen
+      description: Liefert die Liste aller vorhandenen Blogposts.
+      operationId: listBlogposts
+      responses:
+        '200':
+          description: Liste aller Blogposts (kann leer sein).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Blogpost'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Blogposts
+      summary: Blogpost anlegen
+      description: >-
+        Legt einen neuen Blogpost an. Die Felder `id` und `lastModified` werden
+        vom Server vergeben und dürfen nicht mitgesendet werden.
+      operationId: createBlogpost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlogpostInput'
+      responses:
+        '201':
+          description: Der Blogpost wurde angelegt.
+          headers:
+            Location:
+              description: URL des neu angelegten Blogposts.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Blogpost'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /blogposts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/BlogpostId'
+    get:
+      tags:
+        - Blogposts
+      summary: Einzelnen Blogpost abrufen
+      description: Liefert den Blogpost mit der angegebenen ID.
+      operationId: getBlogpost
+      responses:
+        '200':
+          description: Der angeforderte Blogpost.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Blogpost'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Blogposts
+      summary: Blogpost ersetzen
+      description: >-
+        Ersetzt Titel und Inhalt des Blogposts mit der angegebenen ID
+        vollständig. Der Zeitstempel `lastModified` wird dabei vom Server
+        aktualisiert. Da sich die Ressource ändert, wird der aktualisierte
+        Blogpost mit Status 200 zurückgegeben.
+      operationId: replaceBlogpost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlogpostInput'
+      responses:
+        '200':
+          description: Der Blogpost wurde ersetzt und wird zurückgegeben.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Blogpost'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Blogposts
+      summary: Blogpost löschen
+      description: Löscht den Blogpost mit der angegebenen ID.
+      operationId: deleteBlogpost
+      responses:
+        '204':
+          description: Der Blogpost wurde gelöscht. Kein Inhalt im Body.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  parameters:
+    BlogpostId:
+      name: id
+      in: path
+      required: true
+      description: Eindeutige ID des Blogposts.
+      schema:
+        type: string
+        format: uuid
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+  schemas:
+    BlogpostInput:
+      type: object
+      description: Vom Client bereitgestellte Daten eines Blogposts.
+      required:
+        - title
+        - content
+      properties:
+        title:
+          type: string
+          description: Titel des Blogposts.
+          minLength: 1
+          maxLength: 50
+          example: Mein erster Blogpost
+        content:
+          type: string
+          description: Textinhalt des Blogposts (Plaintext).
+          example: Dies ist der Inhalt meines ersten Blogposts.
+      additionalProperties: false
+
+    Blogpost:
+      type: object
+      description: Ein vollständiger Blogpost inklusive der servergenerierten Felder.
+      required:
+        - id
+        - title
+        - content
+        - lastModified
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Eindeutige, vom Server vergebene ID des Blogposts.
+          readOnly: true
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        title:
+          type: string
+          description: Titel des Blogposts.
+          minLength: 1
+          maxLength: 50
+          example: Mein erster Blogpost
+        content:
+          type: string
+          description: Textinhalt des Blogposts (Plaintext).
+          example: Dies ist der Inhalt meines ersten Blogposts.
+        lastModified:
+          type: string
+          format: date-time
+          description: >-
+            Zeitpunkt der letzten Änderung (ISO 8601). Wird vom Server
+            gesetzt und aktualisiert.
+          readOnly: true
+          example: '2026-07-22T11:19:00Z'
+
+    Error:
+      type: object
+      description: Standardisierte Fehlerantwort.
+      required:
+        - status
+        - message
+      properties:
+        status:
+          type: integer
+          format: int32
+          description: HTTP-Statuscode des Fehlers.
+          example: 404
+        message:
+          type: string
+          description: Menschenlesbare Beschreibung des Fehlers.
+          example: Blogpost nicht gefunden.
+
+  responses:
+    BadRequest:
+      description: Die Anfrage war fehlerhaft (z. B. Titel länger als 50 Zeichen oder Pflichtfeld fehlt).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Es existiert kein Blogpost mit der angegebenen ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Unerwarteter Fehler auf dem Server.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
