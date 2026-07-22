@@ -6,7 +6,18 @@ info:
     API zur Verwaltung von Blogposts. Ein Blogpost besteht aus einem Titel
     (höchstens 50 Zeichen) und einem Textinhalt. Zusätzlich wird der Zeitpunkt
     der letzten Änderung geführt.
-  version: 1.0.0
+
+
+    Jeder Blogpost wird von einem Autor verfasst. Autoren verfügen über einen
+    technischen Benutzernamen (für den API-Zugang), einen echten Namen, ein
+    persönliches Motto (höchstens 30 Zeichen) sowie optional ein Avatar-Bild.
+
+
+    **Breaking Change in 2.0.0:** Beim Anlegen eines Blogposts ist das Feld
+    `authorId` nun ein Pflichtfeld. Clients der Version 1.x, die keinen Autor
+    mitsenden, sind nicht mehr kompatibel. Die Autorschaft ist nach dem Anlegen
+    unveränderlich und kann über `PUT` nicht geändert werden.
+  version: 2.0.0
 
 servers:
   - url: 'https://localhost:8080'
@@ -15,6 +26,8 @@ servers:
 tags:
   - name: Blogposts
     description: Operationen zum Verwalten von Blogposts
+  - name: Authors
+    description: Operationen zum Verwalten von Autoren und ihren Avataren
 
 paths:
   /blogposts:
@@ -49,7 +62,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BlogpostInput'
+              $ref: '#/components/schemas/BlogpostCreate'
       responses:
         '201':
           description: Der Blogpost wurde angelegt.
@@ -95,7 +108,8 @@ paths:
       summary: Blogpost ersetzen
       description: >-
         Ersetzt Titel und Inhalt des Blogposts mit der angegebenen ID
-        vollständig. Der Zeitstempel `lastModified` wird dabei vom Server
+        vollständig. Die Autorschaft ist unveränderlich und kann hierüber nicht
+        geändert werden. Der Zeitstempel `lastModified` wird dabei vom Server
         aktualisiert. Da sich die Ressource ändert, wird der aktualisierte
         Blogpost mit Status 200 zurückgegeben.
       operationId: replaceBlogpost
@@ -133,6 +147,222 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /authors:
+    get:
+      tags:
+        - Authors
+      summary: Alle Autoren abrufen
+      description: Liefert die Liste aller vorhandenen Autoren.
+      operationId: listAuthors
+      responses:
+        '200':
+          description: Liste aller Autoren (kann leer sein).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Author'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Authors
+      summary: Autor anlegen
+      description: >-
+        Legt einen neuen Autor an. Das Feld `id` wird vom Server vergeben und
+        darf nicht mitgesendet werden. Ein Avatar wird nicht hier, sondern über
+        `PUT /authors/{id}/avatar` hochgeladen.
+      operationId: createAuthor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorInput'
+      responses:
+        '201':
+          description: Der Autor wurde angelegt.
+          headers:
+            Location:
+              description: URL des neu angelegten Autors.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /authors/{id}:
+    parameters:
+      - $ref: '#/components/parameters/AuthorId'
+    get:
+      tags:
+        - Authors
+      summary: Einzelnen Autor abrufen
+      description: Liefert den Autor mit der angegebenen ID.
+      operationId: getAuthor
+      responses:
+        '200':
+          description: Der angeforderte Autor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Authors
+      summary: Autor bearbeiten
+      description: >-
+        Ersetzt die vom Autor selbst editierbaren Felder (`name` und `motto`)
+        vollständig. Es handelt sich um ein echtes Ersetzen dieser Felder: Ein
+        nicht mitgesendetes `motto` wird dabei entfernt. Der technische
+        Benutzername (`username`) sowie die `id` sind unveränderlich und können
+        hierüber nicht geändert werden.
+      operationId: replaceAuthor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorEditable'
+      responses:
+        '200':
+          description: Der Autor wurde aktualisiert und wird zurückgegeben.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /authors/{id}/avatar:
+    parameters:
+      - $ref: '#/components/parameters/AuthorId'
+    get:
+      tags:
+        - Authors
+      summary: Avatar eines Autors abrufen
+      description: >-
+        Liefert das Avatar-Bild des Autors als Binärdaten. Aufgerufen wird
+        typischerweise die versionierte `avatarUrl` aus dem Autor-Objekt.
+      operationId: getAuthorAvatar
+      parameters:
+        - name: v
+          in: query
+          required: false
+          description: >-
+            Opaker Versions-Token des Avatars (Cache-Busting). Der Wert wird vom
+            Server in der `avatarUrl` vergeben; Clients rufen diese URL einfach
+            unverändert auf. Der Token dient ausschließlich dazu, jeder
+            Avatar-Version eine eindeutige, cachebare URL zu geben – er wählt
+            **keine** bestimmte historische Version aus: Der Server liefert
+            stets das aktuelle Avatar, unabhängig vom übergebenen Wert. Wird der
+            Parameter weggelassen, wird ebenfalls das aktuelle Avatar geliefert
+            (dann jedoch ohne die für Langzeit-Caching gedachte eindeutige URL).
+          schema:
+            type: string
+          example: 8f3a1c9d
+      responses:
+        '200':
+          description: Das Avatar-Bild des Autors.
+          headers:
+            Cache-Control:
+              description: >-
+                Weil die aufgerufene URL einen Versions-Token enthält, kann das
+                Bild langlebig gecacht werden: `immutable` teilt dem Client mit,
+                dass sich der Inhalt unter genau dieser URL nie ändert, und
+                `max-age` legt die Cache-Dauer in Sekunden fest (hier ein Jahr).
+                Ein neues Avatar erhält eine andere URL und wird deshalb neu
+                geladen – der alte Cache-Eintrag stört dabei nicht.
+              schema:
+                type: string
+              example: 'public, max-age=31536000, immutable'
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: >-
+            Der Autor existiert nicht oder hat (noch) kein Avatar hinterlegt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Authors
+      summary: Avatar eines Autors hochladen
+      description: >-
+        Lädt das Avatar-Bild des Autors hoch bzw. ersetzt ein vorhandenes.
+        Erlaubt sind kleine Bilder in den Formaten PNG oder JPEG.
+
+
+        Nach einem erfolgreichen Upload vergibt der Server einen neuen
+        Versions-Token. Die `avatarUrl` des Autors ändert sich dadurch, sodass
+        zuvor zwischengespeicherte Kopien automatisch ungültig werden und Clients
+        das neue Bild laden (siehe `avatarUrl` im Schema `Author`).
+      operationId: uploadAuthorAvatar
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: >-
+            Das Avatar wurde gespeichert. Es wird kein Body zurückgegeben; die
+            neue, versionierte Bild-URL steht im `Content-Location`-Header.
+          headers:
+            Content-Location:
+              description: >-
+                URL des soeben gespeicherten Avatars inklusive des neuen
+                Versions-Tokens. Der Client kann diese URL direkt verwenden,
+                ohne den Autor erneut abzurufen.
+              schema:
+                type: string
+                format: uri
+              example: 'https://localhost:8080/authors/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar?v=8f3a1c9d'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   parameters:
     BlogpostId:
@@ -145,10 +375,23 @@ components:
         format: uuid
       example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
 
+    AuthorId:
+      name: id
+      in: path
+      required: true
+      description: Eindeutige ID des Autors.
+      schema:
+        type: string
+        format: uuid
+      example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+
   schemas:
     BlogpostInput:
       type: object
-      description: Vom Client bereitgestellte Daten eines Blogposts.
+      description: >-
+        Vom Client bereitgestellte, änderbare Daten eines Blogposts. Wird beim
+        Ersetzen (`PUT`) verwendet. Die Autorschaft ist nicht Teil dieses
+        Schemas, da sie nach dem Anlegen unveränderlich ist.
       required:
         - title
         - content
@@ -165,6 +408,36 @@ components:
           example: Dies ist der Inhalt meines ersten Blogposts.
       additionalProperties: false
 
+    BlogpostCreate:
+      type: object
+      description: >-
+        Daten zum Anlegen eines Blogposts (`POST`). Zusätzlich zu Titel und
+        Inhalt muss der Autor angegeben werden.
+      required:
+        - title
+        - content
+        - authorId
+      properties:
+        title:
+          type: string
+          description: Titel des Blogposts.
+          minLength: 1
+          maxLength: 50
+          example: Mein erster Blogpost
+        content:
+          type: string
+          description: Textinhalt des Blogposts (Plaintext).
+          example: Dies ist der Inhalt meines ersten Blogposts.
+        authorId:
+          type: string
+          format: uuid
+          description: >-
+            ID des Autors, dem der Blogpost zugeordnet wird. Muss auf einen
+            existierenden Autor verweisen und ist nach dem Anlegen
+            unveränderlich.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+      additionalProperties: false
+
     Blogpost:
       type: object
       description: Ein vollständiger Blogpost inklusive der servergenerierten Felder.
@@ -172,6 +445,7 @@ components:
         - id
         - title
         - content
+        - author
         - lastModified
       properties:
         id:
@@ -190,6 +464,13 @@ components:
           type: string
           description: Textinhalt des Blogposts (Plaintext).
           example: Dies ist der Inhalt meines ersten Blogposts.
+        author:
+          allOf:
+            - $ref: '#/components/schemas/AuthorSummary'
+          description: >-
+            Kurzinformationen zum Autor des Blogposts. Wird vom Server anhand
+            der beim Anlegen/Ersetzen übergebenen `authorId` befüllt.
+          readOnly: true
         lastModified:
           type: string
           format: date-time
@@ -198,6 +479,149 @@ components:
             gesetzt und aktualisiert.
           readOnly: true
           example: '2026-07-22T11:19:00Z'
+
+    AuthorSummary:
+      type: object
+      description: >-
+        Kurzprofil eines Autors, wie es in Blogpost-Antworten eingebettet wird.
+        Enthält bewusst nicht den technischen Benutzernamen.
+      readOnly: true
+      required:
+        - id
+        - name
+        - avatarUrl
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Eindeutige ID des Autors.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        name:
+          type: string
+          description: Echter Name des Autors.
+          example: Erika Mustermann
+        motto:
+          type: string
+          description: Persönliches Motto des Autors.
+          maxLength: 30
+          example: Immer neugierig bleiben.
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: >-
+            URL des Avatar-Bildes des Autors inklusive Versions-Token für
+            Cache-Busting, oder `null`, falls kein Avatar hinterlegt ist. Details
+            zum Versions-Token siehe Schema `Author`.
+          example: 'https://localhost:8080/authors/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar?v=8f3a1c9d'
+
+    AuthorInput:
+      type: object
+      description: Vom Client bereitgestellte Daten zum Anlegen eines Autors.
+      required:
+        - username
+        - name
+      properties:
+        username:
+          type: string
+          description: >-
+            Technischer Benutzername für den API-Zugang. Unveränderlich nach
+            dem Anlegen.
+          minLength: 1
+          maxLength: 50
+          example: emustermann
+        name:
+          type: string
+          description: Echter Name des Autors.
+          minLength: 1
+          maxLength: 100
+          example: Erika Mustermann
+        motto:
+          type: string
+          description: Persönliches Motto des Autors.
+          maxLength: 30
+          example: Immer neugierig bleiben.
+      additionalProperties: false
+
+    AuthorEditable:
+      type: object
+      description: >-
+        Die vom Autor selbst editierbaren Felder (`name` und `motto`). Wird beim
+        Ersetzen (`PUT`) verwendet. Es handelt sich um ein vollständiges
+        Ersetzen dieser Felder: Ein nicht mitgesendetes `motto` wird entfernt.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Echter Name des Autors.
+          minLength: 1
+          maxLength: 100
+          example: Erika Mustermann
+        motto:
+          type: string
+          description: >-
+            Persönliches Motto des Autors. Wird das Feld weggelassen, gilt das
+            Motto als entfernt.
+          maxLength: 30
+          example: Immer neugierig bleiben.
+      additionalProperties: false
+
+    Author:
+      type: object
+      description: Ein vollständiger Autor inklusive der servergenerierten Felder.
+      required:
+        - id
+        - username
+        - name
+        - avatarUrl
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Eindeutige, vom Server vergebene ID des Autors.
+          readOnly: true
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        username:
+          type: string
+          description: >-
+            Technischer Benutzername für den API-Zugang. Wird beim Anlegen
+            gesetzt und ist danach unveränderlich.
+          minLength: 1
+          maxLength: 50
+          example: emustermann
+        name:
+          type: string
+          description: Echter Name des Autors.
+          minLength: 1
+          maxLength: 100
+          example: Erika Mustermann
+        motto:
+          type: string
+          description: Persönliches Motto des Autors.
+          maxLength: 30
+          example: Immer neugierig bleiben.
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+          description: >-
+            URL des Avatar-Bildes des Autors, oder `null`, falls kein Avatar
+            hinterlegt ist.
+
+
+            Der reine Pfad (`/authors/{id}/avatar`) wäre für den Client
+            ableitbar. Der Server hängt hier aber zusätzlich einen
+            **Versions-Token** als Query-Parameter an (z. B. `?v=8f3a1c9d` –
+            etwa ein Hash des Bildinhalts). Dieser Token ändert sich bei jedem
+            neuen Upload. Dadurch ist aggressives Caching möglich: Das Bild wird
+            unter der versionierten URL langfristig zwischengespeichert; lädt
+            der Autor ein neues Avatar hoch, ändert sich der Token, die URL gilt
+            als „neu“ und Clients bzw. CDNs holen automatisch das aktuelle Bild
+            (**Cache-Busting**). Deshalb wird hier die vollständige, versionierte
+            URL zurückgegeben und nicht nur der ableitbare Pfad.
+          example: 'https://localhost:8080/authors/7c9e6679-7425-40de-944b-e07fc1f90ae7/avatar?v=8f3a1c9d'
 
     Error:
       type: object
@@ -218,13 +642,31 @@ components:
 
   responses:
     BadRequest:
-      description: Die Anfrage war fehlerhaft (z. B. Titel länger als 50 Zeichen oder Pflichtfeld fehlt).
+      description: Die Anfrage war fehlerhaft (z. B. ein Feld verletzt eine Längenbeschränkung oder ein Pflichtfeld fehlt).
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
     NotFound:
-      description: Es existiert kein Blogpost mit der angegebenen ID.
+      description: Es existiert keine Ressource mit der angegebenen ID.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Die Anfrage steht im Konflikt mit dem aktuellen Zustand (z. B. Benutzername bereits vergeben).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLarge:
+      description: Die hochgeladene Datei überschreitet die zulässige Größe.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnsupportedMediaType:
+      description: Der Medientyp der Anfrage wird nicht unterstützt (erlaubt sind image/png und image/jpeg).
       content:
         application/json:
           schema:
